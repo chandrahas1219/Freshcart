@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · FreshCart{% endblock %}
+{% block content %}
+
+<p class="font-mono text-xs tracking-widest text-basil-600 uppercase mb-2">Store office</p>
+<h1 class="font-display text-3xl font-semibold text-basil-900 mb-6">Welcome back, {{ session.get('admin_name') }}</h1>
+
+<div class="grid sm:grid-cols-3 gap-4 mb-8">
+    <div class="panel">
+        <p class="text-xs font-semibold uppercase tracking-wide text-basil-600">Customers</p>
+        <p class="font-mono text-3xl font-semibold text-basil-900 mt-2">{{ customer_count }}</p>
+    </div>
+    <div class="panel">
+        <p class="text-xs font-semibold uppercase tracking-wide text-basil-600">Items in inventory</p>
+        <p class="font-mono text-3xl font-semibold text-basil-900 mt-2">{{ item_count }}</p>
+    </div>
+    <div class="panel">
+        <p class="text-xs font-semibold uppercase tracking-wide text-basil-600">Orders placed</p>
+        <p class="font-mono text-3xl font-semibold text-basil-900 mt-2">{{ order_count }}</p>
+    </div>
+</div>
+
+<div class="grid sm:grid-cols-2 gap-5 mb-8">
+    <a href="{{ url_for('admin.inventory') }}" class="panel hover:border-basil-300 transition-colors block">
+        <h2 class="font-display text-lg font-semibold text-basil-900">Inventory</h2>
+        <p class="text-sm text-basil-800/75 mt-1">Add new stock, update prices and quantities.</p>
+    </a>
+    <a href="{{ url_for('admin.customers') }}" class="panel hover:border-basil-300 transition-colors block">
+        <h2 class="font-display text-lg font-semibold text-basil-900">Customers</h2>
+        <p class="text-sm text-basil-800/75 mt-1">Look up profiles and full purchase history.</p>
+    </a>
+</div>
+
+<div class="panel">
+    <h2 class="font-display text-lg font-semibold text-basil-900 mb-1">Running low</h2>
+    {% if low_stock %}
+        <p class="text-sm text-basil-800/75 mb-4">5 units or fewer left.</p>
+        <table class="ledger">
+            <thead><tr><th>Item</th><th>Unit</th><th>Left</th></tr></thead>
+            <tbody>
+            {% for item in low_stock %}
+                <tr>
+                    <td class="font-medium">{{ item.Name }}</td>
+                    <td class="text-basil-800/70">{{ item.Unit }}</td>
+                    <td><span class="badge badge-low">{{ item.QuantityInStock }}</span></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="text-sm text-basil-800/70">Everything is well stocked.</p>
+    {% endif %}
+</div>
+
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Admin login · FreshCart{% endblock %}
+{% block content %}
+
+<div class="max-w-sm mx-auto py-8">
+    <p class="font-mono text-xs tracking-widest text-basil-600 uppercase mb-2">Store office</p>
+    <h1 class="font-display text-2xl font-semibold text-basil-900 mb-6">Admin login</h1>
+
+    <form method="POST" class="panel space-y-4">
+        <div>
+            <label class="field-label" for="email">Email</label>
+            <input class="field-input" type="email" id="email" name="email" required autofocus>
+        </div>
+        <div>
+            <label class="field-label" for="password">Password</label>
+            <input class="field-input" type="password" id="password" name="password" required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Log in</button>
+    </form>
+
+    <p class="text-sm text-basil-800/70 mt-5">
+        New here? <a href="{{ url_for('admin.verify_key') }}" class="text-basil-700 font-semibold hover:underline">Register with your system key</a>
+    </p>
+</div>
+
+{% endblock %}

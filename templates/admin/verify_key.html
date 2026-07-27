@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Admin key · FreshCart{% endblock %}
+{% block content %}
+
+<div class="max-w-sm mx-auto py-8">
+    <p class="font-mono text-xs tracking-widest text-basil-600 uppercase mb-2">Store office</p>
+    <h1 class="font-display text-2xl font-semibold text-basil-900 mb-1">Enter the system key</h1>
+    <p class="text-sm text-basil-800/70 mb-6">
+        New admin accounts can only be created by someone who already has
+        this key. Ask whoever manages the store for it.
+    </p>
+
+    <form method="POST" class="panel space-y-4">
+        <div>
+            <label class="field-label" for="admin_key">System key</label>
+            <input class="field-input" type="password" id="admin_key" name="admin_key" required autofocus>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Continue</button>
+    </form>
+
+    <p class="text-sm text-basil-800/70 mt-5">
+        Already have an account? <a href="{{ url_for('admin.login') }}" class="text-basil-700 font-semibold hover:underline">Log in</a>
+    </p>
+</div>
+
+{% endblock %}

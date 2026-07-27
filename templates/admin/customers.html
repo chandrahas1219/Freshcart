@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Customers · FreshCart{% endblock %}
+{% block content %}
+
+<p class="font-mono text-xs tracking-widest text-basil-600 uppercase mb-2">Store office</p>
+<h1 class="font-display text-3xl font-semibold text-basil-900 mb-6">Customers</h1>
+
+{% if not customers %}
+    <div class="panel text-sm text-basil-800/70">No customers have registered yet.</div>
+{% else %}
+    <div class="space-y-4">
+    {% for c in customers %}
+        <div class="panel">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <h2 class="font-display text-lg font-semibold text-basil-900">{{ c.Name }}</h2>
+                    <p class="text-sm text-basil-800/70">{{ c.Email }}{% if c.Phone %} · {{ c.Phone }}{% endif %}</p>
+                    <p class="text-xs text-basil-800/50 mt-1 font-mono">Joined {{ c.CreatedAt }}</p>
+                </div>
+                <div class="text-right shrink-0">
+                    <p class="price-mono text-lg font-semibold text-basil-900">₹{{ '%.2f'|format(c.lifetime_spend) }}</p>
+                    <p class="text-xs text-basil-800/60">{{ c.order_count }} order{{ 's' if c.order_count != 1 else '' }}</p>
+                </div>
+            </div>
+
+            {% if c.orders %}
+            <details class="mt-4">
+                <summary class="flex items-center gap-2 text-sm font-semibold text-basil-700 select-none">
+                    <span class="disclosure-marker inline-block transition-transform">▸</span>
+                    View order history
+                </summary>
+                <div class="mt-3 space-y-3">
+                    {% for order in c.orders %}
+                    <div class="tag-card__perforation pt-3">
+                        <div class="flex flex-wrap items-center justify-between gap-2 text-sm mb-2">
+                            <span class="font-semibold text-basil-900">Order #{{ order.order_id }}</span>
+                            <span class="text-basil-800/60 font-mono text-xs">{{ order.timestamp }}</span>
+                            <span class="badge badge-ok">{{ order.payment_method }}</span>
+                        </div>
+                        <table class="ledger">
+                            <thead><tr><th>Item</th><th>Qty</th><th>Unit price</th><th>Subtotal</th></tr></thead>
+                            <tbody>
+                            {% for line in order.line_items %}
+                                <tr>
+                                    <td>{{ line.name }}</td>
+                                    <td class="font-mono">{{ line.quantity }} {{ line.unit }}</td>
+                                    <td class="font-mono">₹{{ '%.2f'|format(line.unit_price) }}</td>
+                                    <td class="font-mono">₹{{ '%.2f'|format(line.subtotal) }}</td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                        <p class="text-right text-sm font-semibold text-basil-900 mt-2">Total ₹{{ '%.2f'|format(order.total) }}</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </details>
+            {% else %}
+                <p class="text-sm text-basil-800/50 mt-3">No orders yet.</p>
+            {% endif %}
+        </div>
+    {% endfor %}
+    </div>
+{% endif %}
+
+{% endblock %}
