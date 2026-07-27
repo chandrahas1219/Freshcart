@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Order history · FreshCart{% endblock %}
+{% block content %}
+
+<p class="font-mono text-xs tracking-widest text-basil-600 uppercase mb-2">Shop</p>
+<h1 class="font-display text-3xl font-semibold text-basil-900 mb-6">Your orders</h1>
+
+{% if not orders %}
+    <div class="panel text-sm text-basil-800/70">
+        No orders yet. <a href="{{ url_for('customer.dashboard') }}" class="text-basil-700 font-semibold hover:underline">Go shop the shelf</a>.
+    </div>
+{% else %}
+<div class="space-y-4">
+    {% for order in orders %}
+    <div class="panel">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div>
+                <span class="font-display font-semibold text-basil-900">Order #{{ order.order_id }}</span>
+                <span class="text-basil-800/50 font-mono text-xs ml-2">{{ order.timestamp }}</span>
+            </div>
+            <span class="badge badge-ok">{{ order.payment_method }}</span>
+        </div>
+        <table class="ledger">
+            <thead><tr><th>Item</th><th>Qty</th><th>Unit price</th><th>Subtotal</th></tr></thead>
+            <tbody>
+            {% for line in order.line_items %}
+                <tr>
+                    <td>{{ line.name }}</td>
+                    <td class="font-mono">{{ line.quantity }} {{ line.unit }}</td>
+                    <td class="font-mono">₹{{ '%.2f'|format(line.unit_price) }}</td>
+                    <td class="font-mono">₹{{ '%.2f'|format(line.subtotal) }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        <p class="text-right text-base font-semibold text-basil-900 mt-3">Total ₹{{ '%.2f'|format(order.total) }}</p>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

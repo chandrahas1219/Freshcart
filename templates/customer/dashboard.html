@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Shop · FreshCart{% endblock %}
+{% block content %}
+
+<p class="font-mono text-xs tracking-widest text-basil-600 uppercase mb-2">Shop</p>
+<h1 class="font-display text-3xl font-semibold text-basil-900 mb-6">Today's shelf</h1>
+
+{% if not groceries %}
+    <div class="panel text-sm text-basil-800/70">The shelves are empty right now — check back soon.</div>
+{% else %}
+<div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+    {% for item in groceries %}
+    {% set item_id = item.ItemID | string %}
+    {% set in_cart_qty = cart.get(item_id, 0) %}
+    {% set stock = item.QuantityInStock | int %}
+    <div class="tag-card">
+        <span class="tag-card__hole" aria-hidden="true"></span>
+        <div class="h-32 bg-basil-50 flex items-center justify-center overflow-hidden">
+            {% if item.ImageURL %}
+                <img src="{{ item.ImageURL }}" alt="{{ item.Name }}" class="w-full h-full object-cover">
+            {% else %}
+                <span class="text-4xl">🥬</span>
+            {% endif %}
+        </div>
+        <div class="p-4 flex flex-col flex-1 tag-card__perforation">
+            {% if item.Category %}<p class="text-[11px] font-semibold uppercase tracking-wide text-basil-600 mb-1">{{ item.Category }}</p>{% endif %}
+            <h2 class="font-display text-base font-semibold text-basil-900 leading-snug">{{ item.Name }}</h2>
+            <p class="text-xs text-basil-800/60 mt-0.5">per {{ item.Unit }}</p>
+
+            <div class="mt-3 flex items-center justify-between">
+                <span class="price-mono text-lg font-semibold text-basil-900">₹{{ '%.2f'|format(item.PricePerUnit) }}</span>
+                {% if stock <= 0 %}
+                    <span class="badge badge-out">Out of stock</span>
+                {% elif stock <= 5 %}
+                    <span class="badge badge-low">{{ stock }} left</span>
+                {% endif %}
+            </div>
+
+            <div class="mt-4">
+                {% if stock <= 0 %}
+                    <button class="btn btn-block" disabled>Out of stock</button>
+                {% elif in_cart_qty > 0 %}
+                    <div class="stepper w-full justify-between">
+                        <form method="POST" action="{{ url_for('customer.cart_decrement', item_id=item_id) }}" class="contents">
+                            <button type="submit" aria-label="Remove one {{ item.Name }}">−</button>
+                        </form>
+                        <span class="stepper-qty">{{ in_cart_qty }}</span>
+                        <form method="POST" action="{{ url_for('customer.cart_add', item_id=item_id) }}" class="contents">
+                            <button type="submit" aria-label="Add one more {{ item.Name }}" {{ 'disabled' if in_cart_qty >= stock else '' }}>+</button>
+                        </form>
+                    </div>
+                {% else %}
+                    <form method="POST" action="{{ url_for('customer.cart_add', item_id=item_id) }}">
+                        <button type="submit" class="btn btn-primary btn-block">Add to cart</button>
+                    </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

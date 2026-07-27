@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Checkout · FreshCart{% endblock %}
+{% block content %}
+
+<p class="font-mono text-xs tracking-widest text-basil-600 uppercase mb-2">Shop · Step 2 of 2</p>
+<h1 class="font-display text-3xl font-semibold text-basil-900 mb-6">Checkout</h1>
+
+<div class="grid lg:grid-cols-5 gap-6">
+    <div class="lg:col-span-3">
+        <form method="POST" class="panel">
+            <h2 class="font-display text-lg font-semibold text-basil-900 mb-4">Payment method</h2>
+            <div class="space-y-3">
+                {% for method in payment_methods %}
+                <label class="flex items-center gap-3 border-1.5 border border-basil-100 rounded-xl px-4 py-3 cursor-pointer has-[:checked]:border-basil-500 has-[:checked]:bg-basil-50 transition-colors">
+                    <input type="radio" name="payment_method" value="{{ method }}" {{ 'checked' if loop.first else '' }} class="accent-basil-600 w-4 h-4">
+                    <span class="font-medium text-basil-900">{{ method }}</span>
+                </label>
+                {% endfor %}
+            </div>
+            <p class="field-hint mt-3">This is a mock checkout — choosing a method and paying confirms the order instantly.</p>
+            <button type="submit" class="btn btn-primary btn-block mt-5">Pay ₹{{ '%.2f'|format(total) }}</button>
+        </form>
+    </div>
+
+    <div class="lg:col-span-2">
+        <div class="panel">
+            <h2 class="font-display text-lg font-semibold text-basil-900 mb-4">Order summary</h2>
+            <ul class="space-y-2 text-sm">
+                {% for entry in items %}
+                <li class="flex justify-between gap-3">
+                    <span class="text-basil-800/80">{{ entry.name }} <span class="text-basil-800/50 font-mono">× {{ entry.quantity }}</span></span>
+                    <span class="font-mono font-medium">₹{{ '%.2f'|format(entry.subtotal) }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+            <div class="flex justify-between items-center mt-4 pt-4 border-t border-basil-100">
+                <span class="font-semibold text-basil-900">Total</span>
+                <span class="price-mono text-xl font-semibold text-basil-900">₹{{ '%.2f'|format(total) }}</span>
+            </div>
+        </div>
+        <a href="{{ url_for('customer.cart') }}" class="text-sm text-basil-700 font-semibold hover:underline mt-3 inline-block">Edit cart</a>
+    </div>
+</div>
+
+{% endblock %}
