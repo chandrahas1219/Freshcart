@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}FreshCart Market{% endblock %}
+{% block content %}
+
+<section class="py-10 sm:py-14">
+    <p class="font-mono text-xs tracking-widest text-basil-600 uppercase mb-4">FreshCart · Excel-backed grocery ordering</p>
+    <h1 class="font-display text-4xl sm:text-5xl font-semibold text-basil-900 leading-tight max-w-2xl">
+        Fresh groceries, ordered simply.
+    </h1>
+    <p class="mt-4 text-base sm:text-lg text-basil-800/80 max-w-xl">
+        Browse what's on the shelf, fill a cart, and check out in a minute —
+        or step behind the counter to manage stock and see what customers
+        have bought.
+    </p>
+</section>
+
+<section class="grid sm:grid-cols-2 gap-5 pb-10">
+    <div class="panel flex flex-col">
+        <span class="text-3xl mb-3">🧺</span>
+        <h2 class="font-display text-xl font-semibold text-basil-900">Shop the market</h2>
+        <p class="mt-2 text-sm text-basil-800/75 flex-1">
+            Browse produce and pantry staples, adjust quantities as you go,
+            and pay with cash on delivery, UPI, or card.
+        </p>
+        <div class="mt-5 flex flex-wrap gap-3">
+            <a href="{{ url_for('customer.login') }}" class="btn btn-primary">Start shopping</a>
+            <a href="{{ url_for('customer.register') }}" class="btn btn-ghost">Create an account</a>
+        </div>
+    </div>
+
+    <div class="panel flex flex-col">
+        <span class="text-3xl mb-3">🗂️</span>
+        <h2 class="font-display text-xl font-semibold text-basil-900">Run the store</h2>
+        <p class="mt-2 text-sm text-basil-800/75 flex-1">
+            Add stock, update prices, and look up any customer's order
+            history — all from one dashboard.
+        </p>
+        <div class="mt-5 flex flex-wrap gap-3">
+            <a href="{{ url_for('admin.login') }}" class="btn btn-secondary">Store office login</a>
+            <a href="{{ url_for('admin.verify_key') }}" class="btn btn-ghost">Register as admin</a>
+        </div>
+    </div>
+</section>
+
+{% endblock %}
