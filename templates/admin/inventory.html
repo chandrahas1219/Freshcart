@@ -6,15 +6,11 @@
 <h1 class="font-display text-3xl font-semibold text-basil-900 mb-6">Inventory</h1>
 
 <div class="panel mb-6">
-    <h2 class="font-display text-lg font-semibold text-basil-900 mb-4">Add a new item</h2>
+    <h2 class="font-display text-lg font-semibold text-basil-900 mb-4">Add item</h2>
     <form method="POST" action="{{ url_for('admin.inventory_add') }}" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <div>
             <label class="field-label" for="name">Name</label>
             <input class="field-input" type="text" id="name" name="name" required>
-        </div>
-        <div>
-            <label class="field-label" for="category">Category</label>
-            <input class="field-input" type="text" id="category" name="category" placeholder="Vegetables, Dairy, ...">
         </div>
         <div>
             <label class="field-label" for="unit">Unit</label>
@@ -25,16 +21,20 @@
             </select>
         </div>
         <div>
-            <label class="field-label" for="price">Price per unit (₹)</label>
+            <label class="field-label" for="price">Price (₹)</label>
             <input class="field-input" type="number" id="price" name="price" min="0.01" step="0.01" required>
         </div>
         <div>
-            <label class="field-label" for="quantity">Quantity in stock</label>
-            <input class="field-input" type="number" id="quantity" name="quantity" min="1" step="1" required>
+            <label class="field-label" for="quantity">Quantity</label>
+            <input class="field-input" type="number" id="quantity" name="quantity" min="1" required>
         </div>
         <div>
-            <label class="field-label" for="image_url">Image URL <span class="font-normal text-basil-800/50 normal-case">(optional)</span></label>
-            <input class="field-input" type="url" id="image_url" name="image_url" placeholder="https://...">
+            <label class="field-label" for="category">Category</label>
+            <input class="field-input" type="text" id="category" name="category">
+        </div>
+        <div>
+            <label class="field-label" for="image_url">Image URL</label>
+            <input class="field-input" type="url" id="image_url" name="image_url">
         </div>
         <div class="sm:col-span-2 lg:col-span-3">
             <button type="submit" class="btn btn-primary">Add item</button>
@@ -43,20 +43,19 @@
 </div>
 
 <div class="panel">
-    <h2 class="font-display text-lg font-semibold text-basil-900 mb-4">Current stock</h2>
+    <h2 class="font-display text-lg font-semibold text-basil-900 mb-4">Stock</h2>
     {% if not groceries %}
-        <p class="text-sm text-basil-800/70">No items yet — add your first one above.</p>
+        <p class="text-sm text-basil-800/70">No items yet.</p>
     {% else %}
     <div class="overflow-x-auto">
         <table class="ledger">
             <thead>
-                <tr><th>Item</th><th>Category</th><th>Unit</th><th>Price</th><th>Stock</th><th></th></tr>
+                <tr><th>Item</th><th>Unit</th><th>Price</th><th>Stock</th><th></th></tr>
             </thead>
             <tbody>
             {% for item in groceries %}
                 <tr>
                     <td class="font-medium">{{ item.Name }}</td>
-                    <td class="text-basil-800/70">{{ item.Category or '—' }}</td>
                     <td class="text-basil-800/70">{{ item.Unit }}</td>
                     <td class="font-mono">₹{{ '%.2f'|format(item.PricePerUnit) }}</td>
                     <td>

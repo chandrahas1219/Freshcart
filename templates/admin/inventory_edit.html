@@ -24,19 +24,19 @@
             </select>
         </div>
         <div>
-            <label class="field-label" for="price">Price per unit (₹)</label>
+            <label class="field-label" for="price">Price (₹)</label>
             <input class="field-input" type="number" id="price" name="price" min="0.01" step="0.01" value="{{ item.PricePerUnit }}" required>
         </div>
         <div>
-            <label class="field-label" for="quantity">Quantity in stock</label>
-            <input class="field-input" type="number" id="quantity" name="quantity" min="1" step="1" value="{{ item.QuantityInStock }}" required>
+            <label class="field-label" for="quantity">Quantity</label>
+            <input class="field-input" type="number" id="quantity" name="quantity" min="1" value="{{ item.QuantityInStock }}" required>
         </div>
         <div class="sm:col-span-2">
-            <label class="field-label" for="image_url">Image URL <span class="font-normal text-basil-800/50 normal-case">(optional)</span></label>
-            <input class="field-input" type="url" id="image_url" name="image_url" value="{{ item.ImageURL or '' }}" placeholder="https://...">
+            <label class="field-label" for="image_url">Image URL</label>
+            <input class="field-input" type="url" id="image_url" name="image_url" value="{{ item.ImageURL or '' }}">
         </div>
         <div class="sm:col-span-2 flex gap-3">
-            <button type="submit" class="btn btn-primary">Save changes</button>
+            <button type="submit" class="btn btn-primary">Save</button>
             <a href="{{ url_for('admin.inventory') }}" class="btn btn-ghost">Cancel</a>
         </div>
     </form>
