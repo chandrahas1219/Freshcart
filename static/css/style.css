@@ -1,8 +1,8 @@
+
 :root {
   --paper: #f1efe3;
 }
 
-/* ---------- Navigation ---------- */
 .nav-link {
   padding: 0.5rem 0.75rem;
   border-radius: 0.5rem;
@@ -13,14 +13,12 @@
 .nav-link:hover { background-color: rgba(255, 255, 255, 0.08); color: #f1efe3; }
 .nav-link-muted { color: rgba(241, 239, 227, 0.55); }
 
-/* ---------- Flash messages ---------- */
 .flash-message { animation: flash-in 200ms ease-out; }
 @keyframes flash-in {
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* ---------- Buttons ---------- */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -46,7 +44,6 @@
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn:disabled:hover { background-color: inherit; }
 
-/* ---------- Form fields ---------- */
 .field-label { display: block; font-size: 0.8rem; font-weight: 600; color: #2f5a41; margin-bottom: 0.35rem; }
 .field-input {
   width: 100%;
@@ -66,7 +63,6 @@
 }
 .field-hint { font-size: 0.78rem; color: #5c7a68; margin-top: 0.3rem; }
 
-/* ---------- Card shell used for auth forms etc ---------- */
 .panel {
   background-color: #fff;
   border: 1px solid #e0efe4;
@@ -74,7 +70,6 @@
   padding: 1.75rem;
 }
 
-/* ---------- Product / price-tag card ---------- */
 .tag-card {
   position: relative;
   background-color: #fff;
@@ -100,7 +95,6 @@
 .tag-card__perforation { border-top: 1.5px dashed #c1dfc9; }
 .price-mono { font-family: "IBM Plex Mono", monospace; }
 
-/* ---------- Ledger-style tables (admin views) ---------- */
 .ledger { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .ledger th {
   text-align: left;
@@ -114,7 +108,6 @@
 .ledger td { padding: 0.7rem 0.75rem; border-bottom: 1px solid #e0efe4; vertical-align: middle; }
 .ledger tr:last-child td { border-bottom: none; }
 
-/* ---------- Quantity stepper ---------- */
 .stepper { display: inline-flex; align-items: center; border: 1.5px solid #c1dfc9; border-radius: 0.6rem; overflow: hidden; }
 .stepper button {
   width: 2.1rem;
@@ -132,7 +125,6 @@
 .stepper button:hover { background-color: #e0efe4; }
 .stepper .stepper-qty { min-width: 2.25rem; text-align: center; font-family: "IBM Plex Mono", monospace; font-weight: 600; font-size: 0.9rem; }
 
-/* ---------- Badges ---------- */
 .badge {
   display: inline-flex;
   align-items: center;
@@ -144,11 +136,6 @@
 }
 .badge-low { background-color: #fdf1ee; color: #b23820; }
 .badge-ok { background-color: #f2f8f4; color: #2f5a41; }
-.badge-out { background-color: #f4f2ea; color: #7a7565; }
-
-/* ---------- Misc ---------- */
-details > summary { cursor: pointer; list-style: none; }
-details > summary::-webkit-details-marker { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
