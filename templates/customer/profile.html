@@ -7,10 +7,10 @@
 
 <div class="grid sm:grid-cols-2 gap-5 max-w-3xl">
     <div class="panel">
-        <h2 class="font-display text-lg font-semibold text-basil-900 mb-4">Account details</h2>
-        <form method="POST" action="{{ url_for('customer.profile') }}" class="space-y-4">
+        <h2 class="font-display text-lg font-semibold text-basil-900 mb-4">Account</h2>
+        <form method="POST" class="space-y-4">
             <div>
-                <label class="field-label" for="name">Full name</label>
+                <label class="field-label" for="name">Name</label>
                 <input class="field-input" type="text" id="name" name="name" value="{{ customer.Name }}" required>
             </div>
             <div>
@@ -21,26 +21,26 @@
                 <label class="field-label" for="phone">Phone</label>
                 <input class="field-input" type="tel" id="phone" name="phone" value="{{ customer.Phone or '' }}">
             </div>
-            <button type="submit" class="btn btn-primary btn-block">Save details</button>
+            <button type="submit" class="btn btn-primary btn-block">Save</button>
         </form>
     </div>
 
     <div class="panel">
-        <h2 class="font-display text-lg font-semibold text-basil-900 mb-4">Change password</h2>
+        <h2 class="font-display text-lg font-semibold text-basil-900 mb-4">Password</h2>
         <form method="POST" action="{{ url_for('customer.change_password') }}" class="space-y-4">
             <div>
-                <label class="field-label" for="current_password">Current password</label>
-                <input class="field-input" type="password" id="current_password" name="current_password" required>
+                <label class="field-label" for="current">Current</label>
+                <input class="field-input" type="password" id="current" name="current_password" required>
             </div>
             <div>
-                <label class="field-label" for="new_password">New password</label>
-                <input class="field-input" type="password" id="new_password" name="new_password" required minlength="6">
+                <label class="field-label" for="new">New</label>
+                <input class="field-input" type="password" id="new" name="new_password" required minlength="6">
             </div>
             <div>
-                <label class="field-label" for="confirm_password">Confirm new password</label>
-                <input class="field-input" type="password" id="confirm_password" name="confirm_password" required minlength="6">
+                <label class="field-label" for="confirm">Confirm</label>
+                <input class="field-input" type="password" id="confirm" name="confirm_password" required minlength="6">
             </div>
-            <button type="submit" class="btn btn-secondary btn-block">Update password</button>
+            <button type="submit" class="btn btn-secondary btn-block">Update</button>
         </form>
     </div>
 </div>

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Order history · FreshCart{% endblock %}
+{% block title %}Orders · FreshCart{% endblock %}
 {% block content %}
 
 <p class="font-mono text-xs tracking-widest text-basil-600 uppercase mb-2">Shop</p>
@@ -7,21 +7,18 @@
 
 {% if not orders %}
     <div class="panel text-sm text-basil-800/70">
-        No orders yet. <a href="{{ url_for('customer.dashboard') }}" class="text-basil-700 font-semibold hover:underline">Go shop the shelf</a>.
+        No orders. <a href="{{ url_for('customer.dashboard') }}" class="text-basil-700 font-semibold hover:underline">Go shop</a>.
     </div>
 {% else %}
 <div class="space-y-4">
     {% for order in orders %}
     <div class="panel">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-            <div>
-                <span class="font-display font-semibold text-basil-900">Order #{{ order.order_id }}</span>
-                <span class="text-basil-800/50 font-mono text-xs ml-2">{{ order.timestamp }}</span>
-            </div>
-            <span class="badge badge-ok">{{ order.payment_method }}</span>
+            <span class="font-display font-semibold text-basil-900">Order #{{ order.order_id }}</span>
+            <span class="text-basil-800/50 font-mono text-xs">{{ order.timestamp }}</span>
         </div>
         <table class="ledger">
-            <thead><tr><th>Item</th><th>Qty</th><th>Unit price</th><th>Subtotal</th></tr></thead>
+            <thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead>
             <tbody>
             {% for line in order.line_items %}
                 <tr>
@@ -33,7 +30,7 @@
             {% endfor %}
             </tbody>
         </table>
-        <p class="text-right text-base font-semibold text-basil-900 mt-3">Total ₹{{ '%.2f'|format(order.total) }}</p>
+        <p class="text-right text-base font-semibold text-basil-900 mt-3">₹{{ '%.2f'|format(order.total) }}</p>
     </div>
     {% endfor %}
 </div>

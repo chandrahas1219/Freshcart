@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Create account · FreshCart{% endblock %}
+{% block title %}Register · FreshCart{% endblock %}
 {% block content %}
 
 <div class="max-w-sm mx-auto py-8">
     <p class="font-mono text-xs tracking-widest text-basil-600 uppercase mb-2">Shop</p>
-    <h1 class="font-display text-2xl font-semibold text-basil-900 mb-6">Create your account</h1>
+    <h1 class="font-display text-2xl font-semibold text-basil-900 mb-6">Create account</h1>
 
     <form method="POST" class="panel space-y-4">
         <div>
@@ -22,17 +22,16 @@
         <div>
             <label class="field-label" for="password">Password</label>
             <input class="field-input" type="password" id="password" name="password" required minlength="6">
-            <p class="field-hint">At least 6 characters.</p>
         </div>
         <div>
             <label class="field-label" for="confirm_password">Confirm password</label>
             <input class="field-input" type="password" id="confirm_password" name="confirm_password" required minlength="6">
         </div>
-        <button type="submit" class="btn btn-primary btn-block">Create account</button>
+        <button type="submit" class="btn btn-primary btn-block">Create</button>
     </form>
 
     <p class="text-sm text-basil-800/70 mt-5">
-        Already shopping with us? <a href="{{ url_for('customer.login') }}" class="text-basil-700 font-semibold hover:underline">Log in</a>
+        Have an account? <a href="{{ url_for('customer.login') }}" class="text-basil-700 font-semibold hover:underline">Log in</a>
     </p>
 </div>
 

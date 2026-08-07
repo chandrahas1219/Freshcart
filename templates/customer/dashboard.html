@@ -6,7 +6,7 @@
 <h1 class="font-display text-3xl font-semibold text-basil-900 mb-6">Today's shelf</h1>
 
 {% if not groceries %}
-    <div class="panel text-sm text-basil-800/70">The shelves are empty right now — check back soon.</div>
+    <div class="panel text-sm text-basil-800/70">Shelves are empty. Check back soon.</div>
 {% else %}
 <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
     {% for item in groceries %}
@@ -29,9 +29,7 @@
 
             <div class="mt-3 flex items-center justify-between">
                 <span class="price-mono text-lg font-semibold text-basil-900">₹{{ '%.2f'|format(item.PricePerUnit) }}</span>
-                {% if stock <= 0 %}
-                    <span class="badge badge-out">Out of stock</span>
-                {% elif stock <= 5 %}
+                {% if stock <= 5 %}
                     <span class="badge badge-low">{{ stock }} left</span>
                 {% endif %}
             </div>
@@ -42,11 +40,11 @@
                 {% elif in_cart_qty > 0 %}
                     <div class="stepper w-full justify-between">
                         <form method="POST" action="{{ url_for('customer.cart_decrement', item_id=item_id) }}" class="contents">
-                            <button type="submit" aria-label="Remove one {{ item.Name }}">−</button>
+                            <button type="submit">−</button>
                         </form>
                         <span class="stepper-qty">{{ in_cart_qty }}</span>
                         <form method="POST" action="{{ url_for('customer.cart_add', item_id=item_id) }}" class="contents">
-                            <button type="submit" aria-label="Add one more {{ item.Name }}" {{ 'disabled' if in_cart_qty >= stock else '' }}>+</button>
+                            <button type="submit" {{ 'disabled' if in_cart_qty >= stock else '' }}>+</button>
                         </form>
                     </div>
                 {% else %}
