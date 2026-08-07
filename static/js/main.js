@@ -1,5 +1,5 @@
+
 document.addEventListener("DOMContentLoaded", () => {
-  // Auto-dismiss flash messages after a few seconds.
   const flashWrap = document.getElementById("flash-messages");
   if (flashWrap) {
     setTimeout(() => {
@@ -12,7 +12,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }, 4500);
   }
 
-  // Rotate the little chevron on <details> disclosures (order history rows).
   document.querySelectorAll("details").forEach((d) => {
     const marker = d.querySelector(".disclosure-marker");
     if (!marker) return;
