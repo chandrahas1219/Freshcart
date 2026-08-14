@@ -4,6 +4,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from google_sheets_helpers import CUSTOMERS_FILE, GROCERIES_FILE, get_all_rows, get_row_by_id, get_row_by_email, create_record, update_row, parse_transaction_history, serialize_transaction_history
 from decorators import customer_required
 from cart_utils import get_cart, save_cart, cart_items_detailed
+from email_utils import send_receipt_email
 
 customer_bp = Blueprint("customer", __name__, url_prefix="/customer")
 PAYMENT_METHODS = ["Cash on Delivery", "UPI", "Card"]
@@ -136,6 +137,7 @@ def checkout():
         history.append(order)
         update_row(CUSTOMERS_FILE, "CustomerID", customer_id, {"TransactionHistory": serialize_transaction_history(history)})
         save_cart({})
+        send_receipt_email(customer, order)
         flash("Payment successful! Order placed.", "success")
         return redirect(url_for("customer.history"))
     return render_template("customer/checkout.html", items=items, total=total, payment_methods=PAYMENT_METHODS)
@@ -184,3 +186,17 @@ def history():
     customer = get_row_by_id(CUSTOMERS_FILE, "CustomerID", session["customer_id"])
     orders = list(reversed(parse_transaction_history(customer.get("TransactionHistory"))))
     return render_template("customer/history.html", orders=orders)
+
+@customer_bp.route("/history/<int:order_id>/email-receipt", methods=["POST"])
+@customer_required
+def email_receipt(order_id):
+    customer = get_row_by_id(CUSTOMERS_FILE, "CustomerID", session["customer_id"])
+    orders = parse_transaction_history(customer.get("TransactionHistory"))
+    order = next((o for o in orders if int(o.get("order_id", -1)) == order_id), None)
+    if not order:
+        flash("Order not found.", "error")
+    elif send_receipt_email(customer, order):
+        flash(f"Receipt for order #{order_id} emailed to {customer.get('Email', '')}.", "success")
+    else:
+        flash("Could not send the receipt email. Please try again later.", "error")
+    return redirect(url_for("customer.history"))
