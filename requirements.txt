@@ -3,3 +3,4 @@ Werkzeug>=3.0
 gspread>=6.0
 google-auth>=2.25
 gunicorn>=21.0
+reportlab>=4.0
