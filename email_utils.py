@@ -2,15 +2,24 @@
 Order receipt emails.
 
 Generates a simple PDF receipt for a completed order and emails it to the
-customer's registered address via SMTP. Designed to fail quietly - if SMTP
-isn't configured, or the send fails for any reason, the checkout flow should
-NOT break. The order is already saved before this runs.
+customer's registered address via Brevo's transactional email HTTP API.
+
+Why HTTP and not smtplib: Render's free tier blocks outbound traffic to
+SMTP ports (25, 465, 587) entirely, so smtplib.SMTP() will hang until it
+times out no matter how correct the credentials are - and a hang here can
+take down the whole Gunicorn worker. Brevo's API is a plain HTTPS POST
+(port 443), which isn't blocked, and its free tier (300 emails/day) needs
+no credit card.
+
+Designed to fail quietly - if Brevo isn't configured, or the send fails
+for any reason, checkout must NOT break. The order is already saved
+before this runs.
 """
 
 import io
-import smtplib
-from email.message import EmailMessage
+import base64
 
+import requests
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib import colors
@@ -18,6 +27,8 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 from config import Config
+
+BREVO_ENDPOINT = "https://api.brevo.com/v3/smtp/email"
 
 
 def generate_receipt_pdf(customer, order):
@@ -77,10 +88,11 @@ def generate_receipt_pdf(customer, order):
 
 def send_receipt_email(customer, order):
     """
-    Email the receipt PDF to the customer. Returns True on success, False
-    otherwise. Never raises - checkout must not fail because of this.
+    Email the receipt PDF to the customer via Brevo's API. Returns True on
+    success, False otherwise. Never raises - checkout must not fail
+    because of this.
     """
-    if not Config.SMTP_HOST or not Config.SMTP_USER or not Config.SMTP_PASSWORD:
+    if not Config.BREVO_API_KEY or not Config.SENDER_EMAIL:
         return False
 
     to_email = (customer.get("Email") or "").strip()
@@ -89,14 +101,10 @@ def send_receipt_email(customer, order):
 
     try:
         pdf_bytes = generate_receipt_pdf(customer, order)
-
-        msg = EmailMessage()
-        msg["Subject"] = f"Your FreshCart receipt - Order #{order['order_id']}"
-        msg["From"] = Config.SMTP_FROM or Config.SMTP_USER
-        msg["To"] = to_email
+        pdf_b64 = base64.b64encode(pdf_bytes).decode("ascii")
 
         first_name = (customer.get("Name") or "there").split(" ")[0]
-        msg.set_content(
+        text_body = (
             f"Hi {first_name},\n\n"
             f"Thanks for your order! Your payment of Rs. {order['total']:.2f} "
             f"was successful (Order #{order['order_id']}, paid via {order['payment_method']}).\n\n"
@@ -105,19 +113,27 @@ def send_receipt_email(customer, order):
             f"- The FreshCart Team"
         )
 
-        msg.add_attachment(
-            pdf_bytes,
-            maintype="application",
-            subtype="pdf",
-            filename=f"FreshCart_Receipt_Order{order['order_id']}.pdf",
-        )
+        payload = {
+            "sender": {"name": Config.SENDER_NAME, "email": Config.SENDER_EMAIL},
+            "to": [{"email": to_email, "name": customer.get("Name", "")}],
+            "subject": f"Your FreshCart receipt - Order #{order['order_id']}",
+            "textContent": text_body,
+            "attachment": [{
+                "content": pdf_b64,
+                "name": f"FreshCart_Receipt_Order{order['order_id']}.pdf",
+            }],
+        }
+        headers = {
+            "api-key": Config.BREVO_API_KEY,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
 
-        with smtplib.SMTP(Config.SMTP_HOST, Config.SMTP_PORT) as server:
-            if Config.SMTP_USE_TLS:
-                server.starttls()
-            server.login(Config.SMTP_USER, Config.SMTP_PASSWORD)
-            server.send_message(msg)
-
+        # timeout is critical: never let a network call hang the worker.
+        resp = requests.post(BREVO_ENDPOINT, json=payload, headers=headers, timeout=10)
+        if resp.status_code >= 300:
+            print(f"[email_utils] Brevo API error {resp.status_code}: {resp.text[:300]}")
+            return False
         return True
     except Exception as exc:
         print(f"[email_utils] Failed to send receipt email to {to_email}: {exc}")
