@@ -1,10 +1,29 @@
 """
-AI Chat Handler - Uses Mistral API to classify user prompts and route actions
+AI Chat Handler - Uses Mistral's native function-calling to understand the
+user's request, decide which FreshCart feature (if any) it maps to, and
+produce a warm, human-sounding reply alongside the structured action.
+
+Design:
+  - ONE call to Mistral per user message, using the `tools` API (not a
+    hand-rolled "return JSON" prompt). We force a tool call
+    (tool_choice="any") against a single tool, `resolve_customer_request`,
+    whose parameters bundle:
+      * reply                -> the natural-language, human-toned message
+                                 the assistant says back to the user
+      * action_type          -> which FreshCart functionality this maps to
+                                 (or "smalltalk" / "out_of_scope" / "not_feasible")
+      * extracted_items / extracted_profile_change -> structured arguments
+        for that functionality
+  - Mistral decides the intent AND writes the human reply in the same
+    structured call, so we never have to reconcile two separate outputs.
+  - All facts that must be accurate (prices, stock, totals, order history)
+    are still computed deterministically in Python from Google Sheets data,
+    never trusted from the model. The model's `reply` is just the
+    conversational wrapper around those facts.
 """
 
 import os
 import json
-import re
 from datetime import datetime
 import requests
 
@@ -13,8 +32,126 @@ from google_sheets_helpers import (
     get_all_rows, get_row_by_id
 )
 
-MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY")  # ✅ CORRECT
-MISTRAL_MODEL = "mistral-small-latest"
+MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY")
+MISTRAL_MODEL = "ministral-8b-2512"
+
+MISTRAL_ENDPOINT = "https://api.mistral.ai/v1/chat/completions"
+
+# All the things a FreshCart customer can actually do. Kept in one place so
+# the system prompt and the routing table can't drift apart.
+ACTION_TYPES = [
+    "add_to_cart", "view_cart", "view_inventory", "view_order_history",
+    "view_profile", "update_profile", "clear_cart", "remove_from_cart",
+    "checkout", "send_receipt",
+    "smalltalk",      # greetings, thanks, "who are you", chit-chat
+    "out_of_scope",   # unrelated to FreshCart (weather, news, etc.)
+    "not_feasible",   # a real FreshCart request that can't be satisfied
+]
+
+SYSTEM_PROMPT = """You are Sprout, the friendly in-app shopping assistant for \
+FreshCart, a grocery ordering app. You talk like a helpful, warm human \
+teammate would over chat - never like a robot reading back a form. Keep \
+replies short (1-3 sentences), plain-spoken, and specific to what the \
+person actually asked. Light, occasional emoji is fine; don't overdo it.
+
+You have access to one tool, `resolve_customer_request`. For EVERY message \
+the user sends, call that tool exactly once. Two things always come out of \
+that call:
+
+1. `reply` - what you'd actually say back to the person, in your own \
+   words, acknowledging their request. This is shown to the user verbatim, \
+   so make it sound like a person wrote it. Never put raw prices, stock \
+   counts, or item lists in `reply` - the app fills those in separately \
+   from real inventory data. Just talk about *what you're doing*, e.g. \
+   "Sure, adding that now!" or "Here's what's in your cart." or "I can't \
+   place an order for more onions than we actually have in stock, sorry!"
+2. `action_type` - which FreshCart feature this maps to, chosen from:
+   - add_to_cart, view_cart, view_inventory, view_order_history,
+     view_profile, update_profile, clear_cart, remove_from_cart,
+     checkout, send_receipt
+   - smalltalk: greetings, thanks, "who are you", jokes, anything
+     conversational with no FreshCart action attached
+   - out_of_scope: unrelated to FreshCart entirely (weather, news, general
+     trivia, coding help, etc.)
+   - not_feasible: it's a real FreshCart request but can't be done as
+     asked (e.g. asking for more of an item than is in stock, or an item
+     that doesn't exist)
+
+Use `feasibility` to say whether the request is "feasible",
+"partially_feasible" (some items work, some don't), or "not_feasible".
+Only set requires_confirmation=true for actions that change data
+(add_to_cart, update_profile, clear_cart, remove_from_cart, checkout).
+Viewing things and sending a receipt never need confirmation.
+
+When the user names items, extract them into extracted_items with your
+best-guess quantity and unit (default quantity 1 if unstated). When they
+ask to change profile info, fill extracted_profile_change with the field
+("name", "email", or "phone") and the new value.
+
+Today's available inventory:
+{inventory_text}
+"""
+
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "resolve_customer_request",
+            "description": (
+                "Classify the customer's chat message into a FreshCart "
+                "action (or smalltalk / out_of_scope / not_feasible) and "
+                "write the natural-language reply to show them."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "reply": {
+                        "type": "string",
+                        "description": (
+                            "Warm, human, conversational reply shown "
+                            "verbatim to the user. No raw prices/stock "
+                            "numbers here - just natural conversation."
+                        ),
+                    },
+                    "action_type": {
+                        "type": "string",
+                        "enum": ACTION_TYPES,
+                    },
+                    "feasibility": {
+                        "type": "string",
+                        "enum": ["feasible", "partially_feasible", "not_feasible"],
+                    },
+                    "requires_confirmation": {"type": "boolean"},
+                    "extracted_items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "quantity": {"type": "number"},
+                                "unit": {"type": "string"},
+                            },
+                            "required": ["name"],
+                        },
+                    },
+                    "extracted_profile_change": {
+                        "type": "object",
+                        "properties": {
+                            "field": {"type": "string", "enum": ["name", "email", "phone"]},
+                            "value": {"type": "string"},
+                        },
+                    },
+                    "alternatives": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                    "reason_if_not_feasible": {"type": "string"},
+                },
+                "required": ["reply", "action_type", "feasibility"],
+            },
+        },
+    }
+]
 
 
 class ChatHandler:
@@ -27,68 +164,36 @@ class ChatHandler:
 
     def classify_prompt(self, user_prompt: str, customer_id: str = None) -> dict:
         """
-        Use Mistral to classify the user's prompt into action categories
-        Returns a structured response with action type and parameters
+        Use Mistral's function-calling to figure out what the user wants,
+        AND get a human-toned reply, in a single request.
         """
-        
-        # Build context about inventory
+
         groceries = get_all_rows(GROCERIES_FILE)
         inventory_text = "\n".join([
-            f"- {g['Name']} ({g['Unit']}): ₹{g['PricePerUnit']}, Stock: {g['QuantityInStock']}"
+            f"- {g['Name']} ({g['Unit']}): stock {g['QuantityInStock']}"
             for g in groceries
         ])
 
-        prompt = f"""You are an AI assistant for FreshCart, a grocery ordering app. 
-Analyze this user prompt and classify it into one of these categories:
-
-CATEGORIES:
-1. "add_to_cart" - User wants to add items to cart. Extract item names and quantities.
-2. "view_cart" - User wants to see current cart contents.
-3. "view_inventory" - User wants to see available items.
-4. "view_order_history" - User wants to see past orders.
-5. "view_profile" - User wants to see their profile details.
-6. "update_profile" - User wants to change name/phone/email.
-7. "clear_cart" - User wants to empty the cart.
-8. "remove_from_cart" - User wants to remove specific items.
-9. "checkout" - User wants to proceed to payment.
-10. "send_receipt" - User wants an order receipt.
-11. "out_of_scope" - Unrelated query (weather, news, etc).
-12. "not_feasible" - Related but impossible (ordering more stock than available).
-
-AVAILABLE ITEMS:
-{inventory_text}
-
-USER PROMPT: "{user_prompt}"
-
-RESPOND WITH ONLY A JSON OBJECT (no markdown, no extra text):
-{{
-  "action_type": "one of the categories above",
-  "feasibility": "feasible" | "partially_feasible" | "not_feasible",
-  "requires_confirmation": true | false,
-  "confidence": 0.0 to 1.0,
-  "extracted_items": [
-    {{"name": "item_name", "quantity": 2, "unit": "kg"}}
-  ],
-  "extracted_profile_change": {{"field": "phone", "value": "9876543210"}},
-  "message": "User-friendly response message",
-  "alternatives": ["alternative 1", "alternative 2"],
-  "reason_if_not_feasible": "explanation of why it's not possible",
-  "error": null | "error message if parsing failed"
-}}"""
+        system_message = SYSTEM_PROMPT.format(inventory_text=inventory_text)
 
         try:
             response = requests.post(
-                "https://api.mistral.ai/v1/chat/completions",
+                MISTRAL_ENDPOINT,
                 headers={
                     "Authorization": f"Bearer {self.api_key}",
                     "Content-Type": "application/json"
                 },
                 json={
                     "model": MISTRAL_MODEL,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.3  # Low temperature for deterministic classification
+                    "messages": [
+                        {"role": "system", "content": system_message},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "tools": TOOLS,
+                    "tool_choice": "any",
+                    "temperature": 0.4,
                 },
-                timeout=10
+                timeout=15
             )
 
             if response.status_code != 200:
@@ -99,18 +204,27 @@ RESPOND WITH ONLY A JSON OBJECT (no markdown, no extra text):
                 }
 
             result = response.json()
-            response_text = result["choices"][0]["message"]["content"]
-            
-            # Clean up response (remove markdown if present)
-            response_text = response_text.strip()
-            if response_text.startswith("```"):
-                response_text = response_text.split("```")[1]
-                if response_text.startswith("json"):
-                    response_text = response_text[4:]
-            response_text = response_text.strip()
+            message = result["choices"][0]["message"]
+            tool_calls = message.get("tool_calls") or []
 
-            parsed = json.loads(response_text)
+            if not tool_calls:
+                # Model answered in plain text instead of calling the tool -
+                # still usable as a smalltalk-style reply.
+                return {
+                    "understood": True,
+                    "reply": message.get("content", "").strip() or "Got it!",
+                    "action_type": "smalltalk",
+                    "feasibility": "feasible",
+                    "requires_confirmation": False,
+                }
+
+            arguments = tool_calls[0]["function"]["arguments"]
+            parsed = json.loads(arguments) if isinstance(arguments, str) else arguments
             parsed["understood"] = True
+            parsed.setdefault("reply", "Got it!")
+            parsed.setdefault("action_type", "smalltalk")
+            parsed.setdefault("feasibility", "feasible")
+            parsed.setdefault("requires_confirmation", False)
             return parsed
 
         except json.JSONDecodeError:
@@ -128,8 +242,9 @@ RESPOND WITH ONLY A JSON OBJECT (no markdown, no extra text):
 
     def handle_action(self, parsed_prompt: dict, customer_id: str, cart: dict) -> dict:
         """
-        Route the classified action to appropriate handler
-        Returns response with preview/confirmation needed
+        Route the classified action to appropriate handler.
+        Every handler blends the AI's human `reply` with the deterministic,
+        data-accurate details (prices/stock/totals) it computes itself.
         """
 
         if not parsed_prompt.get("understood"):
@@ -140,41 +255,61 @@ RESPOND WITH ONLY A JSON OBJECT (no markdown, no extra text):
                 "requires_confirmation": False
             }
 
+        ai_reply = parsed_prompt.get("reply", "").strip()
         action_type = parsed_prompt.get("action_type", "out_of_scope")
         feasibility = parsed_prompt.get("feasibility", "not_feasible")
 
         # Validate feasibility first
         if feasibility == "not_feasible":
-            return self._handle_not_feasible(parsed_prompt)
+            return self._handle_not_feasible(parsed_prompt, ai_reply)
 
         if feasibility == "partially_feasible":
-            return self._handle_partially_feasible(parsed_prompt)
+            return self._handle_partially_feasible(parsed_prompt, ai_reply)
 
         # Route to action handlers
         handlers = {
-            "add_to_cart": lambda: self._handle_add_to_cart(parsed_prompt, customer_id, cart),
-            "view_cart": lambda: self._handle_view_cart(cart),
-            "view_inventory": lambda: self._handle_view_inventory(),
-            "view_order_history": lambda: self._handle_view_order_history(customer_id),
-            "view_profile": lambda: self._handle_view_profile(customer_id),
-            "update_profile": lambda: self._handle_update_profile(parsed_prompt, customer_id),
-            "clear_cart": lambda: self._handle_clear_cart(cart),
-            "remove_from_cart": lambda: self._handle_remove_from_cart(parsed_prompt, cart),
-            "checkout": lambda: self._handle_checkout(cart),
-            "send_receipt": lambda: self._handle_send_receipt(customer_id),
-            "out_of_scope": lambda: self._handle_out_of_scope(parsed_prompt),
+            "add_to_cart": lambda: self._handle_add_to_cart(parsed_prompt, customer_id, cart, ai_reply),
+            "view_cart": lambda: self._handle_view_cart(cart, ai_reply),
+            "view_inventory": lambda: self._handle_view_inventory(ai_reply),
+            "view_order_history": lambda: self._handle_view_order_history(customer_id, ai_reply),
+            "view_profile": lambda: self._handle_view_profile(customer_id, ai_reply),
+            "update_profile": lambda: self._handle_update_profile(parsed_prompt, customer_id, ai_reply),
+            "clear_cart": lambda: self._handle_clear_cart(cart, ai_reply),
+            "remove_from_cart": lambda: self._handle_remove_from_cart(parsed_prompt, cart, ai_reply),
+            "checkout": lambda: self._handle_checkout(cart, ai_reply),
+            "send_receipt": lambda: self._handle_send_receipt(customer_id, ai_reply),
+            "smalltalk": lambda: self._handle_smalltalk(ai_reply),
+            "out_of_scope": lambda: self._handle_out_of_scope(ai_reply),
         }
 
-        handler = handlers.get(action_type, lambda: self._handle_out_of_scope(parsed_prompt))
+        handler = handlers.get(action_type, lambda: self._handle_out_of_scope(ai_reply))
         return handler()
 
-    def _handle_add_to_cart(self, prompt: dict, customer_id: str, cart: dict) -> dict:
+    @staticmethod
+    def _compose(ai_reply: str, details: str = "") -> str:
+        """Blend the model's human reply with deterministic, factual details."""
+        ai_reply = (ai_reply or "").strip()
+        details = (details or "").strip()
+        if ai_reply and details:
+            return f"{ai_reply}\n\n{details}"
+        return ai_reply or details
+
+    def _handle_smalltalk(self, ai_reply: str) -> dict:
+        """Pure conversation - no FreshCart action, just the human reply."""
+        return {
+            "success": True,
+            "message": ai_reply or "Hey! How can I help you shop today?",
+            "action": None,
+            "requires_confirmation": False,
+        }
+
+    def _handle_add_to_cart(self, prompt: dict, customer_id: str, cart: dict, ai_reply: str) -> dict:
         """Add items to cart with validation"""
         items = prompt.get("extracted_items", [])
         if not items:
             return {
                 "success": False,
-                "message": "No items found to add",
+                "message": self._compose(ai_reply, "I didn't catch which item(s) you meant."),
                 "action": None
             }
 
@@ -212,24 +347,24 @@ RESPOND WITH ONLY A JSON OBJECT (no markdown, no extra text):
         if not preview_items and invalid_items:
             return {
                 "success": False,
-                "message": f"⚠️ {', '.join(invalid_items)}",
+                "message": self._compose(ai_reply, f"⚠️ {', '.join(invalid_items)}"),
                 "action": None,
                 "requires_confirmation": False,
                 "alternatives": ["Try a different quantity or item"]
             }
 
-        # Build preview message
-        message = "Ready to add:\n\n"
+        # Build deterministic itemized details
+        details = "Ready to add:\n\n"
         for item in preview_items:
-            message += f"• {item['name']}: {item['quantity']}{item['unit']} = ₹{item['subtotal']:.2f}\n"
-        message += f"\nTotal: ₹{total_price:.2f}"
+            details += f"• {item['name']}: {item['quantity']}{item['unit']} = ₹{item['subtotal']:.2f}\n"
+        details += f"\nTotal: ₹{total_price:.2f}"
 
         if invalid_items:
-            message += f"\n\n⚠️ Note: {', '.join(invalid_items)}"
+            details += f"\n\n⚠️ Note: {', '.join(invalid_items)}"
 
         return {
             "success": True,
-            "message": message,
+            "message": self._compose(ai_reply, details),
             "action": "add_to_cart",
             "requires_confirmation": True,
             "preview": {
@@ -240,12 +375,12 @@ RESPOND WITH ONLY A JSON OBJECT (no markdown, no extra text):
             "redirect_to": "/customer/checkout"
         }
 
-    def _handle_view_cart(self, cart: dict) -> dict:
+    def _handle_view_cart(self, cart: dict, ai_reply: str) -> dict:
         """Show current cart contents"""
         if not cart:
             return {
                 "success": True,
-                "message": "Your cart is empty. Start shopping? [View Items]",
+                "message": self._compose(ai_reply, "Your cart is empty. Start shopping? [View Items]"),
                 "action": "view_cart",
                 "requires_confirmation": False,
                 "redirect_to": "/customer/dashboard"
@@ -266,25 +401,24 @@ RESPOND WITH ONLY A JSON OBJECT (no markdown, no extra text):
                     "subtotal": price
                 })
 
-        message = f"Your cart ({len(items)} items):\n\n"
+        details = f"Your cart ({len(items)} items):\n\n"
         for item in items:
-            message += f"• {item['name']}: {item['quantity']}{item['unit']} = ₹{item['subtotal']:.2f}\n"
-        message += f"\nTotal: ₹{total:.2f}\n\n[Checkout] [Keep Shopping]"
+            details += f"• {item['name']}: {item['quantity']}{item['unit']} = ₹{item['subtotal']:.2f}\n"
+        details += f"\nTotal: ₹{total:.2f}\n\n[Checkout] [Keep Shopping]"
 
         return {
             "success": True,
-            "message": message,
+            "message": self._compose(ai_reply, details),
             "action": "view_cart",
             "requires_confirmation": False,
             "preview": {"items": items, "total": total},
             "redirect_to": "/customer/cart"
         }
 
-    def _handle_view_inventory(self) -> dict:
+    def _handle_view_inventory(self, ai_reply: str) -> dict:
         """List all available items"""
         groceries = get_all_rows(GROCERIES_FILE)
-        
-        # Group by category
+
         by_category = {}
         for g in groceries:
             cat = g.get("Category", "Other")
@@ -292,34 +426,34 @@ RESPOND WITH ONLY A JSON OBJECT (no markdown, no extra text):
                 by_category[cat] = []
             by_category[cat].append(g)
 
-        message = "Available items:\n\n"
+        details = "Available items:\n\n"
         for category, items in by_category.items():
-            message += f"📦 {category.upper()}\n"
+            details += f"📦 {category.upper()}\n"
             for item in items:
                 stock = int(item["QuantityInStock"])
                 status = "✅" if stock > 0 else "❌"
-                message += f"  {status} {item['Name']}: ₹{item['PricePerUnit']}/{item.get('Unit', 'unit')} (Stock: {stock})\n"
-            message += "\n"
+                details += f"  {status} {item['Name']}: ₹{item['PricePerUnit']}/{item.get('Unit', 'unit')} (Stock: {stock})\n"
+            details += "\n"
 
-        message += "[Add Items] [View Cart]"
+        details += "[Add Items] [View Cart]"
 
         return {
             "success": True,
-            "message": message,
+            "message": self._compose(ai_reply, details),
             "action": "view_inventory",
             "requires_confirmation": False,
             "redirect_to": "/customer/dashboard"
         }
 
-    def _handle_view_order_history(self, customer_id: str) -> dict:
+    def _handle_view_order_history(self, customer_id: str, ai_reply: str) -> dict:
         """Fetch and display order history"""
         from google_sheets_helpers import parse_transaction_history
-        
+
         customer = get_row_by_id(CUSTOMERS_FILE, "CustomerID", customer_id)
         if not customer:
             return {
                 "success": False,
-                "message": "Could not find customer",
+                "message": self._compose(ai_reply, "Could not find customer"),
                 "action": None
             }
 
@@ -327,60 +461,60 @@ RESPOND WITH ONLY A JSON OBJECT (no markdown, no extra text):
         if not orders:
             return {
                 "success": True,
-                "message": "No orders yet. Start shopping! [Browse Items]",
+                "message": self._compose(ai_reply, "No orders yet. Start shopping! [Browse Items]"),
                 "action": "view_order_history",
                 "requires_confirmation": False,
                 "redirect_to": "/customer/dashboard"
             }
 
-        message = f"Your orders ({len(orders)} total):\n\n"
+        details = f"Your orders ({len(orders)} total):\n\n"
         for order in reversed(orders[-5:]):  # Last 5 orders
-            message += f"Order #{order.get('order_id', 'N/A')}: {order.get('timestamp', 'N/A')}\n"
-            message += f"  Items: {len(order.get('line_items', []))}\n"
-            message += f"  Total: ₹{order.get('total', 0):.2f}\n"
-            message += f"  Payment: {order.get('payment_method', 'Unknown')}\n\n"
+            details += f"Order #{order.get('order_id', 'N/A')}: {order.get('timestamp', 'N/A')}\n"
+            details += f"  Items: {len(order.get('line_items', []))}\n"
+            details += f"  Total: ₹{order.get('total', 0):.2f}\n"
+            details += f"  Payment: {order.get('payment_method', 'Unknown')}\n\n"
 
-        message += "[View Full History] [Place New Order]"
+        details += "[View Full History] [Place New Order]"
 
         return {
             "success": True,
-            "message": message,
+            "message": self._compose(ai_reply, details),
             "action": "view_order_history",
             "requires_confirmation": False,
             "redirect_to": "/customer/history"
         }
 
-    def _handle_view_profile(self, customer_id: str) -> dict:
+    def _handle_view_profile(self, customer_id: str, ai_reply: str) -> dict:
         """Show user profile"""
         customer = get_row_by_id(CUSTOMERS_FILE, "CustomerID", customer_id)
         if not customer:
             return {
                 "success": False,
-                "message": "Could not find profile",
+                "message": self._compose(ai_reply, "Could not find profile"),
                 "action": None
             }
 
-        message = "Your profile:\n\n"
-        message += f"Name: {customer.get('Name', 'N/A')}\n"
-        message += f"Email: {customer.get('Email', 'N/A')}\n"
-        message += f"Phone: {customer.get('Phone', 'N/A')}\n\n"
-        message += "[Edit Profile] [Change Password]"
+        details = "Your profile:\n\n"
+        details += f"Name: {customer.get('Name', 'N/A')}\n"
+        details += f"Email: {customer.get('Email', 'N/A')}\n"
+        details += f"Phone: {customer.get('Phone', 'N/A')}\n\n"
+        details += "[Edit Profile] [Change Password]"
 
         return {
             "success": True,
-            "message": message,
+            "message": self._compose(ai_reply, details),
             "action": "view_profile",
             "requires_confirmation": False,
             "redirect_to": "/customer/profile"
         }
 
-    def _handle_update_profile(self, prompt: dict, customer_id: str) -> dict:
+    def _handle_update_profile(self, prompt: dict, customer_id: str, ai_reply: str) -> dict:
         """Update profile (show preview, require confirmation)"""
         customer = get_row_by_id(CUSTOMERS_FILE, "CustomerID", customer_id)
         if not customer:
             return {
                 "success": False,
-                "message": "Could not find profile",
+                "message": self._compose(ai_reply, "Could not find profile"),
                 "action": None
             }
 
@@ -391,21 +525,21 @@ RESPOND WITH ONLY A JSON OBJECT (no markdown, no extra text):
         if not field or not new_value:
             return {
                 "success": False,
-                "message": "Could not understand what to change. Try: 'Update my phone to 9876543210'",
+                "message": self._compose(ai_reply, "Could not understand what to change. Try: 'Update my phone to 9876543210'"),
                 "action": None
             }
 
         current_value = customer.get(field.capitalize() if field == "phone" else field, "N/A")
 
-        message = f"Update profile:\n\n"
-        message += f"Field: {field}\n"
-        message += f"Current: {current_value}\n"
-        message += f"New: {new_value}\n\n"
-        message += "⚠️ For security, confirm this change on the profile page."
+        details = f"Update profile:\n\n"
+        details += f"Field: {field}\n"
+        details += f"Current: {current_value}\n"
+        details += f"New: {new_value}\n\n"
+        details += "⚠️ For security, confirm this change on the profile page."
 
         return {
             "success": True,
-            "message": message,
+            "message": self._compose(ai_reply, details),
             "action": "update_profile",
             "requires_confirmation": True,
             "preview": {
@@ -416,41 +550,41 @@ RESPOND WITH ONLY A JSON OBJECT (no markdown, no extra text):
             "redirect_to": "/customer/profile"
         }
 
-    def _handle_clear_cart(self, cart: dict) -> dict:
+    def _handle_clear_cart(self, cart: dict, ai_reply: str) -> dict:
         """Clear entire cart"""
         if not cart:
             return {
                 "success": True,
-                "message": "Cart is already empty",
+                "message": self._compose(ai_reply, "Cart is already empty"),
                 "action": None
             }
 
         return {
             "success": True,
-            "message": f"Clear cart? This will remove {len(cart)} items.",
+            "message": self._compose(ai_reply, f"Clear cart? This will remove {len(cart)} items."),
             "action": "clear_cart",
             "requires_confirmation": True,
             "preview": {"items_to_remove": len(cart)},
             "redirect_to": "/customer/dashboard"
         }
 
-    def _handle_remove_from_cart(self, prompt: dict, cart: dict) -> dict:
+    def _handle_remove_from_cart(self, prompt: dict, cart: dict, ai_reply: str) -> dict:
         """Remove specific item from cart"""
         items = prompt.get("extracted_items", [])
         if not items:
             return {
                 "success": False,
-                "message": "Which item to remove?",
+                "message": self._compose(ai_reply, "Which item to remove?"),
                 "action": None
             }
 
         item_name = items[0]["name"]
         grocery = self._find_item(item_name)
-        
+
         if not grocery:
             return {
                 "success": False,
-                "message": f"Item '{item_name}' not found",
+                "message": self._compose(ai_reply, f"Item '{item_name}' not found"),
                 "action": None
             }
 
@@ -458,25 +592,25 @@ RESPOND WITH ONLY A JSON OBJECT (no markdown, no extra text):
         if item_id not in cart:
             return {
                 "success": False,
-                "message": f"{item_name} is not in your cart",
+                "message": self._compose(ai_reply, f"{item_name} is not in your cart"),
                 "action": None
             }
 
         return {
             "success": True,
-            "message": f"Remove {item_name} from cart?",
+            "message": self._compose(ai_reply, f"Remove {item_name} from cart?"),
             "action": "remove_from_cart",
             "requires_confirmation": True,
             "preview": {"item_id": item_id, "item_name": item_name},
             "redirect_to": "/customer/cart"
         }
 
-    def _handle_checkout(self, cart: dict) -> dict:
+    def _handle_checkout(self, cart: dict, ai_reply: str) -> dict:
         """Proceed to checkout"""
         if not cart:
             return {
                 "success": False,
-                "message": "Your cart is empty. Add items first!",
+                "message": self._compose(ai_reply, "Your cart is empty. Add items first!"),
                 "action": None
             }
 
@@ -488,22 +622,22 @@ RESPOND WITH ONLY A JSON OBJECT (no markdown, no extra text):
 
         return {
             "success": True,
-            "message": f"Proceed to checkout? Total: ₹{total:.2f}",
+            "message": self._compose(ai_reply, f"Proceed to checkout? Total: ₹{total:.2f}"),
             "action": "checkout",
             "requires_confirmation": True,
             "preview": {"total": total, "items": len(cart)},
             "redirect_to": "/customer/checkout"
         }
 
-    def _handle_send_receipt(self, customer_id: str) -> dict:
+    def _handle_send_receipt(self, customer_id: str, ai_reply: str) -> dict:
         """Auto-send receipt (no confirmation needed)"""
         from google_sheets_helpers import parse_transaction_history
-        
+
         customer = get_row_by_id(CUSTOMERS_FILE, "CustomerID", customer_id)
         if not customer:
             return {
                 "success": False,
-                "message": "Could not find customer",
+                "message": self._compose(ai_reply, "Could not find customer"),
                 "action": None
             }
 
@@ -511,7 +645,7 @@ RESPOND WITH ONLY A JSON OBJECT (no markdown, no extra text):
         if not orders:
             return {
                 "success": False,
-                "message": "No orders to send receipt for",
+                "message": self._compose(ai_reply, "No orders to send receipt for"),
                 "action": None
             }
 
@@ -519,47 +653,54 @@ RESPOND WITH ONLY A JSON OBJECT (no markdown, no extra text):
         latest = orders[-1]
         return {
             "success": True,
-            "message": f"Sending receipt for Order #{latest.get('order_id')} to {customer.get('Email')}...\n\n✅ Receipt sent!",
+            "message": self._compose(
+                ai_reply,
+                f"Sending receipt for Order #{latest.get('order_id')} to {customer.get('Email')}..."
+            ),
             "action": "send_receipt",
             "requires_confirmation": False,
             "auto_execute": True,
             "preview": {"order_id": latest.get("order_id"), "total": latest.get("total")}
         }
 
-    def _handle_out_of_scope(self, prompt: dict) -> dict:
-        """Handle out of scope queries"""
-        reason = prompt.get("reason_if_not_feasible", "unrelated query")
-        
-        if "unrelated" in reason.lower() or "weather" in reason.lower():
-            message = "Sorry, I only help with FreshCart grocery orders!\n\nCan I help you:\n[Browse Items] [View Cart] [Order History]?"
-        else:
-            message = f"I can't help with that right now.\n\n{reason}\n\nTry something else?"
-
+    def _handle_out_of_scope(self, ai_reply: str) -> dict:
+        """Handle out of scope queries - trust the model's own human phrasing"""
         return {
             "success": True,
-            "message": message,
+            "message": ai_reply or "Sorry, I only help with FreshCart grocery orders! Can I help you shop instead?",
             "action": "out_of_scope",
             "requires_confirmation": False,
             "redirect_to": "/customer/dashboard"
         }
 
-    def _handle_not_feasible(self, prompt: dict) -> dict:
+    def _handle_not_feasible(self, prompt: dict, ai_reply: str) -> dict:
         """Handle feasible but not possible requests"""
-        reason = prompt.get("reason_if_not_feasible", "This is not possible right now")
+        reason = prompt.get("reason_if_not_feasible", "")
         alternatives = prompt.get("alternatives", [])
 
-        message = f"⚠️ {reason}\n\n"
+        details = ""
+        if reason:
+            details += f"⚠️ {reason}\n\n"
         if alternatives:
-            message += "Alternatives:\n"
+            details += "Alternatives:\n"
             for alt in alternatives[:3]:
-                message += f"• {alt}\n"
+                details += f"• {alt}\n"
 
         return {
             "success": True,
-            "message": message,
+            "message": self._compose(ai_reply, details.strip()),
             "action": None,
             "requires_confirmation": False
         }
+
+    def _handle_partially_feasible(self, prompt: dict, ai_reply: str) -> dict:
+        """Handle requests where only part of it can be done - route through
+        the normal action handler so the feasible part still goes through,
+        while the reply/alternatives explain what couldn't be done."""
+        action_type = prompt.get("action_type", "out_of_scope")
+        if action_type == "add_to_cart":
+            return self._handle_add_to_cart(prompt, None, {}, ai_reply)
+        return self._handle_not_feasible(prompt, ai_reply)
 
     def _find_item(self, item_name: str) -> dict:
         """Search for item by name (case-insensitive, fuzzy match)"""

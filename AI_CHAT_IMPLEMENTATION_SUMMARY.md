@@ -265,7 +265,7 @@ Edit `templates/chat_popup.html`:
 ### **Change AI Model**
 Edit `ai_chat_handler.py`:
 ```python
-MISTRAL_MODEL = "mistral-small-latest"
+MISTRAL_MODEL = "ministral-8b-2512"
 # Try: mistral-tiny (faster), mistral-medium-latest (better)
 ```
 

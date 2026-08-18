@@ -265,7 +265,7 @@ background: #d2452a;
 ### **Add More Mistral Models**
 In `ai_chat_handler.py`, change:
 ```python
-MISTRAL_MODEL = "mistral-small-latest"
+MISTRAL_MODEL = "ministral-8b-2512"
 # Options: mistral-tiny, mistral-small-latest, mistral-medium-latest, mistral-large-latest
 ```
 
