@@ -80,6 +80,12 @@
     FreshCart Market — Flask + Google Sheets
 </footer>
 
+<!-- AI Chat Popup (Only for logged-in customers) -->
+{% if session.get('customer_id') %}
+    {% include 'chat_popup.html' %}
+{% endif %}
+
 <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chat.js') }}"></script>
 </body>
 </html>
