@@ -28,7 +28,7 @@
             <p class="text-xs text-basil-800/60 mt-0.5">per {{ item.Unit }}</p>
 
             <div class="mt-3 flex items-center justify-between">
-                <span class="price-mono text-lg font-semibold text-basil-900">₹{{ '%.2f'|format(item.PricePerUnit) }}</span>
+                <span class="price-mono text-lg font-semibold text-basil-900">₹{{ '%.2f'|format(item.PricePerUnit | float) }}</span>
                 {% if stock <= 5 %}
                     <span class="badge badge-low">{{ stock }} left</span>
                 {% endif %}
