@@ -1,7 +1,7 @@
 import os, json, base64
 from threading import Lock
 import gspread
-from google.auth.service_account import Credentials
+from google.oauth2.service_account import Credentials
 
 ADMINS_SHEET_ID = os.environ.get("ADMINS_SHEET_ID", "1kfZuYSZJ4LyVYcbU5WQk5zJslhYzETtj23qbDLNDuE8")
 CUSTOMERS_SHEET_ID = os.environ.get("CUSTOMERS_SHEET_ID", "14gT1SFByZeltkRPqgkFtoYwA0yYtZx_92yFm3I0a61E")
