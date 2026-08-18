@@ -49,11 +49,17 @@ CATEGORIES:
 5. "view_profile" - User wants to see their profile details.
 6. "update_profile" - User wants to change name/phone/email.
 7. "clear_cart" - User wants to empty the cart.
-8. "remove_from_cart" - User wants to remove specific items.
+8. "remove_from_cart" - User wants to remove specific items (fully, or a specific quantity of them).
 9. "checkout" - User wants to proceed to payment.
 10. "send_receipt" - User wants an order receipt.
 11. "out_of_scope" - Unrelated query (weather, news, etc).
 12. "not_feasible" - Related but impossible (ordering more stock than available).
+13. "get_item_price" - User is asking the price of one or more SPECIFIC named items (not the whole list).
+
+IMPORTANT for "extracted_items":
+- "quantity" must always be a plain number (e.g. 1, 2, 12). Never a word or null.
+- If the user says a word-based quantity like "a dozen", "half a dozen", "a pair", convert it yourself: dozen=12, half a dozen=6, pair=2, couple=2.
+- If the user gives no quantity for remove_from_cart, omit "quantity" entirely (this means "remove all of that item").
 
 AVAILABLE ITEMS:
 {inventory_text}
@@ -163,6 +169,7 @@ RESPOND WITH ONLY A JSON OBJECT (no markdown, no extra text):
             "checkout": lambda: self._handle_checkout(cart),
             "send_receipt": lambda: self._handle_send_receipt(customer_id),
             "out_of_scope": lambda: self._handle_out_of_scope(parsed_prompt),
+            "get_item_price": lambda: self._handle_get_item_price(parsed_prompt),
         }
 
         handler = handlers.get(action_type, lambda: self._handle_out_of_scope(parsed_prompt))
@@ -190,7 +197,11 @@ RESPOND WITH ONLY A JSON OBJECT (no markdown, no extra text):
                 continue
 
             available = int(grocery["QuantityInStock"])
-            requested = item.get("quantity", 1)
+            requested = self._safe_quantity(item.get("quantity", 1))
+
+            if requested is None or requested <= 0:
+                invalid_items.append(f"{item['name']}: couldn't understand the quantity requested")
+                continue
 
             if requested > available:
                 invalid_items.append(
@@ -462,12 +473,27 @@ RESPOND WITH ONLY A JSON OBJECT (no markdown, no extra text):
                 "action": None
             }
 
+        # quantity is optional: if the user didn't specify one, remove the whole line
+        raw_qty = items[0].get("quantity")
+        requested_qty = self._safe_quantity(raw_qty) if raw_qty is not None else None
+        current_qty = cart[item_id]
+
+        if requested_qty is not None and requested_qty < current_qty:
+            confirm_text = f"Remove {requested_qty}{items[0].get('unit', '')} of {item_name} from cart?"
+        else:
+            requested_qty = current_qty  # remove entirely
+            confirm_text = f"Remove all {item_name} from cart?"
+
         return {
             "success": True,
-            "message": f"Remove {item_name} from cart?",
+            "message": confirm_text,
             "action": "remove_from_cart",
             "requires_confirmation": True,
-            "preview": {"item_id": item_id, "item_name": item_name},
+            "preview": {
+                "item_id": item_id,
+                "item_name": item_name,
+                "quantity": requested_qty
+            },
             "redirect_to": "/customer/cart"
         }
 
@@ -560,6 +586,57 @@ RESPOND WITH ONLY A JSON OBJECT (no markdown, no extra text):
             "action": None,
             "requires_confirmation": False
         }
+
+    def _handle_get_item_price(self, prompt: dict) -> dict:
+        """Look up the price of one or more specific items (not the full inventory)"""
+        items = prompt.get("extracted_items", [])
+        if not items:
+            return {
+                "success": False,
+                "message": "Which item's price did you want?",
+                "action": None
+            }
+
+        lines = []
+        not_found = []
+        for item in items:
+            grocery = self._find_item(item["name"])
+            if not grocery:
+                not_found.append(item["name"])
+                continue
+            lines.append(
+                f"• {grocery['Name']}: ₹{grocery['PricePerUnit']}/{grocery.get('Unit', 'unit')}"
+            )
+
+        if not lines:
+            return {
+                "success": False,
+                "message": f"Couldn't find {', '.join(not_found)} in inventory",
+                "action": None
+            }
+
+        message = "\n".join(lines)
+        if not_found:
+            message += f"\n\n⚠️ Not found: {', '.join(not_found)}"
+
+        return {
+            "success": True,
+            "message": message,
+            "action": "get_item_price",
+            "requires_confirmation": False,
+            "redirect_to": None
+        }
+
+    def _safe_quantity(self, value):
+        """Coerce a quantity value from the model into a positive number, or None if invalid"""
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            return value
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
 
     def _find_item(self, item_name: str) -> dict:
         """Search for item by name (case-insensitive, fuzzy match)"""
