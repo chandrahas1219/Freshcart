@@ -172,12 +172,23 @@ def execute_confirmed_action(action: str, preview: dict, customer_id: str) -> di
 
     elif action == "remove_from_cart":
         item_id = preview.get("item_id")
+        qty_to_remove = preview.get("quantity")
+
         if item_id in cart:
-            del cart[item_id]
+            if qty_to_remove is None or qty_to_remove >= cart[item_id]:
+                # No quantity specified, or it covers the whole line -> remove entirely
+                del cart[item_id]
+                message = "✅ Removed from cart"
+            else:
+                cart[item_id] -= qty_to_remove
+                message = f"✅ Removed {qty_to_remove} — {cart[item_id]} left in cart"
+        else:
+            message = "Item was not in your cart"
+
         save_cart(cart)
         return {
             "success": True,
-            "message": "✅ Removed from cart",
+            "message": message,
             "action": "remove_from_cart",
             "redirect_to": "/customer/cart"
         }
