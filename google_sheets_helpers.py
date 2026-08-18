@@ -1,7 +1,7 @@
-import os, json, base64, time
+import os, json, base64
 from threading import Lock
 import gspread
-from google.oauth2.service_account import Credentials
+from google.auth.service_account import Credentials
 
 ADMINS_SHEET_ID = os.environ.get("ADMINS_SHEET_ID", "1kfZuYSZJ4LyVYcbU5WQk5zJslhYzETtj23qbDLNDuE8")
 CUSTOMERS_SHEET_ID = os.environ.get("CUSTOMERS_SHEET_ID", "14gT1SFByZeltkRPqgkFtoYwA0yYtZx_92yFm3I0a61E")
@@ -13,19 +13,6 @@ GROCERY_HEADERS = ["ItemID", "Name", "Category", "Unit", "PricePerUnit", "Quanti
 
 _lock = Lock()
 _client = None
-
-# Short-lived cache to avoid hammering the Sheets API. Google's free-tier
-# quota is 60 read requests per user per minute - without this, a single
-# checkout with a few cart items alone could burn 5+ reads, and a few
-# customers browsing at once easily blows past the limit (429 Quota
-# Exceeded). CACHE_TTL_SECONDS controls how "fresh" data is; lower it if
-# you need changes (e.g. admin edits) to show up faster.
-CACHE_TTL_SECONDS = 5
-_cache = {}  # sheet_id -> (timestamp, rows)
-
-
-def _invalidate_cache(sheet_id):
-    _cache.pop(sheet_id, None)
 
 def _get_gspread_client():
     global _client
@@ -48,30 +35,19 @@ def _get_worksheet(sheet_id):
     sheet = client.open_by_key(sheet_id)
     return sheet.sheet1
 
-def _read_rows(sheet_id, use_cache=True):
-    if use_cache:
-        cached = _cache.get(sheet_id)
-        if cached and (time.monotonic() - cached[0]) < CACHE_TTL_SECONDS:
-            return cached[1]
+def _read_rows(sheet_id):
     with _lock:
-        # Re-check inside the lock in case another thread just refreshed it.
-        if use_cache:
-            cached = _cache.get(sheet_id)
-            if cached and (time.monotonic() - cached[0]) < CACHE_TTL_SECONDS:
-                return cached[1]
         ws = _get_worksheet(sheet_id)
         rows = ws.get_all_values()
         if not rows:
-            result = []
-        else:
-            headers = rows[0]
-            result = []
-            for raw_row in rows[1:]:
-                if not raw_row or raw_row[0] == "":
-                    continue
-                row_dict = dict(zip(headers, raw_row))
-                result.append(row_dict)
-        _cache[sheet_id] = (time.monotonic(), result)
+            return []
+        headers = rows[0]
+        result = []
+        for raw_row in rows[1:]:
+            if not raw_row or raw_row[0] == "":
+                continue
+            row_dict = dict(zip(headers, raw_row))
+            result.append(row_dict)
         return result
 
 def get_all_rows(sheet_id):
@@ -113,7 +89,6 @@ def create_record(sheet_id, id_column, data):
         record[id_column] = new_id
         new_row = [record.get(h, "") for h in headers]
         ws.append_row(new_row)
-        _invalidate_cache(sheet_id)
         return new_id
 
 def update_row(sheet_id, id_column, id_value, updates):
@@ -137,7 +112,6 @@ def update_row(sheet_id, id_column, id_value, updates):
             if key in headers:
                 col_idx = headers.index(key) + 1
                 ws.update_cell(found_row_num, col_idx, value)
-        _invalidate_cache(sheet_id)
         return True
 
 ADMINS_FILE = ADMINS_SHEET_ID

@@ -1,5 +1,5 @@
 from flask import session
-from google_sheets_helpers import GROCERIES_FILE, get_all_rows
+from google_sheets_helpers import GROCERIES_FILE, get_row_by_id
 
 def get_cart():
     return session.setdefault("cart", {})
@@ -12,11 +12,8 @@ def cart_items_detailed():
     cart = get_cart()
     items = []
     total = 0.0
-    # One read for the whole sheet instead of one per cart line - avoids
-    # hammering the Sheets API quota as the cart grows.
-    groceries_by_id = {str(g["ItemID"]): g for g in get_all_rows(GROCERIES_FILE)}
     for item_id, qty in cart.items():
-        grocery = groceries_by_id.get(str(item_id))
+        grocery = get_row_by_id(GROCERIES_FILE, "ItemID", item_id)
         if not grocery:
             continue
         price = float(grocery["PricePerUnit"])
