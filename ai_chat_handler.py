@@ -13,7 +13,7 @@ from google_sheets_helpers import (
     get_all_rows, get_row_by_id
 )
 
-MISTRAL_API_KEY = os.environ.get("BREVO_API_KEY")  # Reuse from Brevo
+MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY")  # ✅ CORRECT
 MISTRAL_MODEL = "mistral-small-latest"
 
 
@@ -23,7 +23,7 @@ class ChatHandler:
     def __init__(self):
         self.api_key = MISTRAL_API_KEY
         if not self.api_key:
-            raise ValueError("BREVO_API_KEY (Mistral API) not configured")
+            raise ValueError("MISTRAL_API_KEY environment variable not configured")
 
     def classify_prompt(self, user_prompt: str, customer_id: str = None) -> dict:
         """
