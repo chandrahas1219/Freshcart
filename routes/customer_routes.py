@@ -121,13 +121,17 @@ def checkout():
         payment_method = request.form.get("payment_method", PAYMENT_METHODS[0])
         if payment_method not in PAYMENT_METHODS:
             payment_method = PAYMENT_METHODS[0]
+        # Fetch the sheet once (served from cache if recently read) instead
+        # of once per cart line - keeps checkout to a small, fixed number
+        # of Sheets API calls regardless of cart size.
+        groceries_by_id = {str(g["ItemID"]): g for g in get_all_rows(GROCERIES_FILE)}
         for entry in items:
-            grocery = get_row_by_id(GROCERIES_FILE, "ItemID", entry["item_id"])
+            grocery = groceries_by_id.get(entry["item_id"])
             if not grocery or int(grocery["QuantityInStock"]) < entry["quantity"]:
                 flash("Not enough stock. Update cart.", "error")
                 return redirect(url_for("customer.cart"))
         for entry in items:
-            grocery = get_row_by_id(GROCERIES_FILE, "ItemID", entry["item_id"])
+            grocery = groceries_by_id[entry["item_id"]]
             new_qty = int(grocery["QuantityInStock"]) - entry["quantity"]
             update_row(GROCERIES_FILE, "ItemID", entry["item_id"], {"QuantityInStock": new_qty})
         customer_id = session["customer_id"]
