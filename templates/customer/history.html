@@ -31,11 +31,6 @@
             </tbody>
         </table>
         <p class="text-right text-base font-semibold text-basil-900 mt-3">₹{{ '%.2f'|format(order.total) }}</p>
-        <form action="{{ url_for('customer.email_receipt', order_id=order.order_id) }}" method="post" class="mt-3 flex justify-end">
-            <button type="submit" class="text-xs font-mono uppercase tracking-widest border border-basil-900/30 text-basil-800 px-3 py-2 rounded hover:bg-basil-900 hover:text-white transition">
-                Email me this receipt
-            </button>
-        </form>
     </div>
     {% endfor %}
 </div>
