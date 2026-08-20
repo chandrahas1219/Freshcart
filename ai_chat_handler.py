@@ -33,7 +33,7 @@ from mongo_helpers import (
 )
 
 MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY")
-MISTRAL_MODEL = "mistral-large-latest"
+MISTRAL_MODEL = "mistral-8b-2512"
 
 MISTRAL_ENDPOINT = "https://api.mistral.ai/v1/chat/completions"
 
