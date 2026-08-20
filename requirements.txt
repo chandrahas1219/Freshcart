@@ -1,7 +1,12 @@
 Flask>=3.0
 Werkzeug>=3.0
-gspread>=6.0
-google-auth>=2.25
+pymongo>=4.9
 gunicorn>=21.0
 reportlab>=4.0
 requests>=2.31.0
+
+# gspread/google-auth kept temporarily so migrate_to_mongo.py can still
+# read the old sheets. Remove these two once migration is done and
+# verified, and delete google_sheets_helpers.py + migrate_to_mongo.py.
+gspread>=6.0
+google-auth>=2.25

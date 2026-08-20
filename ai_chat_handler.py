@@ -27,7 +27,7 @@ import json
 from datetime import datetime
 import requests
 
-from google_sheets_helpers import (
+from mongo_helpers import (
     GROCERIES_FILE, CUSTOMERS_FILE,
     get_all_rows, get_row_by_id
 )
@@ -447,7 +447,7 @@ class ChatHandler:
 
     def _handle_view_order_history(self, customer_id: str, ai_reply: str) -> dict:
         """Fetch and display order history"""
-        from google_sheets_helpers import parse_transaction_history
+        from mongo_helpers import parse_transaction_history
 
         customer = get_row_by_id(CUSTOMERS_FILE, "CustomerID", customer_id)
         if not customer:
@@ -631,7 +631,7 @@ class ChatHandler:
 
     def _handle_send_receipt(self, customer_id: str, ai_reply: str) -> dict:
         """Auto-send receipt (no confirmation needed)"""
-        from google_sheets_helpers import parse_transaction_history
+        from mongo_helpers import parse_transaction_history
 
         customer = get_row_by_id(CUSTOMERS_FILE, "CustomerID", customer_id)
         if not customer:
