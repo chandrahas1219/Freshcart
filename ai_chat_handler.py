@@ -88,6 +88,18 @@ best-guess quantity and unit (default quantity 1 if unstated). When they
 ask to change profile info, fill extracted_profile_change with the field
 ("name", "email", or "phone") and the new value.
 
+IMPORTANT - using conversation history: earlier turns in this chat are
+included above as real context, not just for tone. If the customer replies
+with something that only makes sense next to what was already said -
+"add them", "yes", "do it", "sorry add them", "just the first two",
+"no onions though" - look back at your own most recent proposal (item
+names, quantities) in the conversation history and use THAT to populate
+extracted_items / action_type, adjusted for whatever they're changing.
+Don't ask "what items?" again if the earlier turns already named them -
+that earlier list stays valid even if the action was cancelled, since the
+customer is now re-confirming it. Only ask for clarification if the
+history genuinely doesn't contain enough to resolve the reference.
+
 Today's available inventory:
 {inventory_text}
 """
