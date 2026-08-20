@@ -76,34 +76,12 @@ def chat_message():
     try:
         # Step 1: Load this customer's recent turns (last 10, <5 min old)
         history = get_recent_chat_history(customer_id)
-        
-        # Step 1b: Load customer's current state for richer AI context
-        user_profile = get_row_by_id(CUSTOMERS_FILE, "CustomerID", customer_id)
-        
-        # Step 1c: Get current cart contents (from session, which cart_utils populates)
+
+        # Step 2: Classify the prompt using Mistral, with that history for context
+        parsed = handler.classify_prompt(user_prompt, customer_id, history=history)
+
+        # Step 3: Handle the classified action
         cart = get_cart()
-        cart_items = cart.get(customer_id, []) if isinstance(cart, dict) else []
-        
-        # Step 1d: Get recent orders from transaction history
-        recent_orders = []
-        if user_profile and user_profile.get("TransactionHistory"):
-            try:
-                from mongo_helpers import parse_transaction_history
-                recent_orders = parse_transaction_history(user_profile.get("TransactionHistory"))[-5:]  # last 5
-            except:
-                recent_orders = []
-
-        # Step 2: Classify the prompt using Mistral, with full context
-        parsed = handler.classify_prompt(
-            user_prompt, 
-            customer_id, 
-            history=history, 
-            cart_items=cart_items,
-            user_profile=user_profile,
-            recent_orders=recent_orders
-        )
-
-        # Step 3: Handle the classified action (cart already loaded above)
         response = handler.handle_action(parsed, customer_id, cart)
 
         # Add default fields if missing
