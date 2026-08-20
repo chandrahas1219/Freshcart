@@ -43,7 +43,7 @@ def _get_db():
     uri = os.environ.get("MONGODB_URI")
     if not uri:
         raise ValueError("MONGODB_URI environment variable not set")
-    _client = MongoClient(uri)
+    _client = MongoClient(uri, tz_aware=True)
     # Uses the database named in the URI path (e.g. .../freshcart?...).
     # Falls back to "freshcart" if the URI has no db name in the path.
     _db = _client.get_default_database(default="freshcart")
