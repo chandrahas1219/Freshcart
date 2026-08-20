@@ -5,6 +5,7 @@ Chat API Routes - Handle AI chat interactions
 from flask import Blueprint, request, jsonify, session
 from ai_chat_handler import ChatHandler
 from cart_utils import get_cart
+from mongo_helpers import get_recent_chat_history, append_chat_message
 
 chat_bp = Blueprint("chat", __name__, url_prefix="/api/chat")
 
@@ -73,10 +74,13 @@ def chat_message():
         }), 401
 
     try:
-        # Step 1: Classify the prompt using Mistral
-        parsed = handler.classify_prompt(user_prompt, customer_id)
+        # Step 1: Load this customer's recent turns (last 10, <5 min old)
+        history = get_recent_chat_history(customer_id)
 
-        # Step 2: Handle the classified action
+        # Step 2: Classify the prompt using Mistral, with that history for context
+        parsed = handler.classify_prompt(user_prompt, customer_id, history=history)
+
+        # Step 3: Handle the classified action
         cart = get_cart()
         response = handler.handle_action(parsed, customer_id, cart)
 
@@ -87,6 +91,18 @@ def chat_message():
             response["requires_confirmation"] = False
         if "auto_execute" not in response:
             response["auto_execute"] = False
+
+        # Step 4: Remember this turn for next time. Store the FULL composed
+        # message (not just the model's own prose) — it's what carries the
+        # concrete item names/quantities/prices the model needs to resolve
+        # a later "add them" / "yes" back to something specific, especially
+        # since the frontend's Cancel button only clears state client-side
+        # and never tells the backend, so this history is the only place
+        # that context survives.
+        append_chat_message(customer_id, "user", user_prompt)
+        assistant_text = response.get("message") or parsed.get("reply", "")
+        if assistant_text:
+            append_chat_message(customer_id, "assistant", assistant_text)
 
         return jsonify(response), 200
 
