@@ -1,7 +1,7 @@
 from datetime import datetime
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, current_app
 from werkzeug.security import generate_password_hash, check_password_hash
-from google_sheets_helpers import ADMINS_FILE, CUSTOMERS_FILE, GROCERIES_FILE, get_all_rows, get_row_by_id, get_row_by_email, create_record, update_row, parse_transaction_history
+from mongo_helpers import ADMINS_FILE, CUSTOMERS_FILE, GROCERIES_FILE, get_all_rows, get_row_by_id, get_row_by_email, create_record, update_row, parse_transaction_history
 from decorators import admin_required
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")

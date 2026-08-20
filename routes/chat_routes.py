@@ -145,7 +145,7 @@ def confirm_action():
 def execute_confirmed_action(action: str, preview: dict, customer_id: str) -> dict:
     """Execute a confirmed action from chat"""
     from cart_utils import get_cart, save_cart
-    from google_sheets_helpers import (
+    from mongo_helpers import (
         GROCERIES_FILE, CUSTOMERS_FILE,
         get_row_by_id, update_row
     )
