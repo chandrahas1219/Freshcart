@@ -18,11 +18,15 @@ condition the old max(existing_ids)+1 approach had on Sheets.
 import os
 import re
 import json
+from datetime import datetime, timedelta, timezone
 from pymongo import MongoClient, ReturnDocument, ASCENDING
 
 ADMINS_FILE = "admins"
 CUSTOMERS_FILE = "customers"
 GROCERIES_FILE = "groceries"
+
+CHAT_HISTORY_MAX_MESSAGES = 10   # keep at most this many turns per user
+CHAT_HISTORY_TTL_SECONDS = 300   # 5 minutes
 
 ADMIN_HEADERS = ["AdminID", "Name", "Email", "Phone", "PasswordHash", "CreatedAt"]
 CUSTOMER_HEADERS = ["CustomerID", "Name", "Email", "Phone", "PasswordHash", "TransactionHistory", "CreatedAt"]
@@ -122,8 +126,54 @@ def init_db():
         db[CUSTOMERS_FILE].create_index([("Email", ASCENDING)])
         db[CUSTOMERS_FILE].create_index([("CustomerID", ASCENDING)], unique=True)
         db[GROCERIES_FILE].create_index([("ItemID", ASCENDING)], unique=True)
+        # TTL index: Mongo's background task drops a user's whole chat_history
+        # document ~5 min after their last message (updated_at), so idle
+        # conversations clean themselves up with no cron job needed.
+        db["chat_history"].create_index(
+            [("updated_at", ASCENDING)], expireAfterSeconds=CHAT_HISTORY_TTL_SECONDS
+        )
     except Exception as e:
         raise RuntimeError(f"Failed to initialize MongoDB: {e}")
+
+
+def _chat_history_collection():
+    return _get_db()["chat_history"]
+
+
+def append_chat_message(customer_id, role, content):
+    """Add one turn (role='user' or 'assistant') to this customer's rolling
+    chat history. Keeps only the most recent CHAT_HISTORY_MAX_MESSAGES turns
+    (oldest dropped first) and refreshes the 5-minute TTL clock."""
+    now = datetime.now(timezone.utc)
+    entry = {"role": role, "content": content, "ts": now}
+    _chat_history_collection().update_one(
+        {"_id": str(customer_id)},
+        {
+            "$push": {
+                "messages": {
+                    "$each": [entry],
+                    "$slice": -CHAT_HISTORY_MAX_MESSAGES,
+                }
+            },
+            "$set": {"updated_at": now},
+        },
+        upsert=True,
+    )
+
+
+def get_recent_chat_history(customer_id):
+    """Return this customer's recent turns, oldest first, excluding any
+    older than the 5-minute window (covers the gap between a message going
+    stale and Mongo's background TTL sweep actually deleting the document)."""
+    doc = _chat_history_collection().find_one({"_id": str(customer_id)})
+    if not doc:
+        return []
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=CHAT_HISTORY_TTL_SECONDS)
+    return [m for m in doc.get("messages", []) if m["ts"] >= cutoff]
+
+
+def clear_chat_history(customer_id):
+    _chat_history_collection().delete_one({"_id": str(customer_id)})
 
 
 def parse_transaction_history(raw):

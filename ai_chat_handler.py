@@ -162,10 +162,15 @@ class ChatHandler:
         if not self.api_key:
             raise ValueError("MISTRAL_API_KEY environment variable not configured")
 
-    def classify_prompt(self, user_prompt: str, customer_id: str = None) -> dict:
+    def classify_prompt(self, user_prompt: str, customer_id: str = None, history: list = None) -> dict:
         """
         Use Mistral's function-calling to figure out what the user wants,
         AND get a human-toned reply, in a single request.
+
+        `history` is this customer's recent turns (oldest first), each a
+        dict like {"role": "user"|"assistant", "content": "..."}. It's
+        passed straight into the messages array so the model has short-term
+        conversational memory (e.g. "add 2 more of that").
         """
 
         groceries = get_all_rows(GROCERIES_FILE)
@@ -175,6 +180,10 @@ class ChatHandler:
         ])
 
         system_message = SYSTEM_PROMPT.format(inventory_text=inventory_text)
+
+        history_messages = [
+            {"role": h["role"], "content": h["content"]} for h in (history or [])
+        ]
 
         try:
             response = requests.post(
@@ -187,6 +196,7 @@ class ChatHandler:
                     "model": MISTRAL_MODEL,
                     "messages": [
                         {"role": "system", "content": system_message},
+                        *history_messages,
                         {"role": "user", "content": user_prompt},
                     ],
                     "tools": TOOLS,
